@@ -1,38 +1,24 @@
-import { Pool, neonConfig } from "@neondatabase/serverless";
-import { drizzle, type NeonDatabase } from "drizzle-orm/neon-serverless";
-import ws from "ws";
+import { neon } from "@neondatabase/serverless";
+import { drizzle, type NeonHttpDatabase } from "drizzle-orm/neon-http";
 import * as schema from "./schema";
 
-// Fixes the local Node.js WebSocket environment absence
-if (process.env.NODE_ENV !== "production") {
-  neonConfig.webSocketConstructor = ws;
-}
-
 const globalForDb = globalThis as unknown as {
-  pool: Pool | undefined;
-  db: NeonDatabase<typeof schema> | undefined;
+  sql: any;
+  db: NeonHttpDatabase<typeof schema> | undefined;
 };
 
-const pool =
-  globalForDb.pool ??
-  new Pool({
-    connectionString: process.env.DATABASE_URL,
-    max: 10, // Limit maximum connections to avoid exhaustion in serverless environments
-    idleTimeoutMillis: 30000, // Close idle connections after 30 seconds
-    connectionTimeoutMillis: 2000, // Terminate connection attempts that hang for > 2 seconds
-  });
+const sql = globalForDb.sql ?? neon(process.env.DATABASE_URL!);
 
 if (process.env.NODE_ENV !== "production") {
-  globalForDb.pool = pool;
+  globalForDb.sql = sql;
 }
 
-export const db =
-  globalForDb.db ??
-  (drizzle({ client: pool, schema }) as NeonDatabase<typeof schema>);
+export const db = (globalForDb.db ?? drizzle(sql, { schema })) as NeonHttpDatabase<typeof schema>;
 
 if (process.env.NODE_ENV !== "production") {
   globalForDb.db = db;
 }
+
 
 
 
