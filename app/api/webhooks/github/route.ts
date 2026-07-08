@@ -1,10 +1,12 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "../../../../db";
 import { events, repositories } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
 import { waitUntil } from "@vercel/functions";
 import { processEvent } from "../../../../lib/processor";
+
+export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   try {
@@ -35,12 +37,33 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Guardrail check for DATABASE_URL environment variable
+    if (!process.env.DATABASE_URL) {
+      console.error(
+        "[CRITICAL] DATABASE_URL is undefined inside the webhook route environment context!"
+      );
+      return NextResponse.json(
+        { error: "Database configuration missing" },
+        { status: 500 }
+      );
+    }
+
     // 4. Lookup matching repository
-    const [repo] = await db
-      .select()
-      .from(repositories)
-      .where(eq(repositories.fullName, repoFullName))
-      .limit(1);
+    let repo: any;
+    try {
+      const [res] = await db
+        .select()
+        .from(repositories)
+        .where(eq(repositories.fullName, repoFullName))
+        .limit(1);
+      repo = res;
+    } catch (err: any) {
+      console.error("[Webhook DB Fetch Error]:", err);
+      return NextResponse.json(
+        { error: "Database fetch failed" },
+        { status: 500 }
+      );
+    }
 
     if (!repo) {
       return new Response("Repository not registered", { status: 404 });
