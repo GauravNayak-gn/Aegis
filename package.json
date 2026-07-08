@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "dev": "NODE_OPTIONS=--no-network-family-autoselection next dev",
+    "build": "NODE_OPTIONS=--no-network-family-autoselection next build",
+    "start": "NODE_OPTIONS=--no-network-family-autoselection next start",
     "lint": "eslint"
   },
   "dependencies": {

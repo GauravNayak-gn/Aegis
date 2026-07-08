@@ -64,11 +64,8 @@ export const authOptions: NextAuthOptions = {
   },
   logger: {
     error(code, metadata) {
-      console.error(
-        " [NEXTAUTH_RAW_ERROR]",
-        code,
-        JSON.stringify(metadata, null, 2)
-      );
+      console.error(" [NEXTAUTH_RAW_ERROR] CODE:", code);
+      console.error(" [NEXTAUTH_RAW_ERROR] METADATA:", metadata);
     },
   },
 };

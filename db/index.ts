@@ -1,6 +1,10 @@
 import { neon } from "@neondatabase/serverless";
 import { drizzle, type NeonHttpDatabase } from "drizzle-orm/neon-http";
 import * as schema from "./schema";
+import dns from "dns";
+
+// Force Node.js to prefer IPv4 DNS resolution first to bypass broken/unroutable IPv6 network routing
+dns.setDefaultResultOrder("ipv4first");
 
 const globalForDb = globalThis as unknown as {
   sql: any;
