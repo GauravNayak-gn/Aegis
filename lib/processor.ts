@@ -2,6 +2,7 @@ import { db } from "../db";
 import { events, repositories, accounts, actions } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 import { addLabel, postComment } from "./github/client";
+import { sendSlackNotification } from "./slack/client";
 
 export async function processEvent(eventId: number) {
   console.log(`[Processor] Started processing event ID: ${eventId}`);
@@ -84,8 +85,10 @@ export async function processEvent(eventId: number) {
 
       let labelFailed = false;
       let commentFailed = false;
+      let slackFailed = false;
       let labelErrorMsg = "";
       let commentErrorMsg = "";
+      let slackErrorMsg = "";
 
       // Call addLabel to add 'needs-triage' label
       try {
@@ -143,11 +146,46 @@ export async function processEvent(eventId: number) {
         });
       }
 
+      // Call sendSlackNotification to post a Slack alert if Webhook URL is set
+      const slackWebhookUrl = process.env.SLACK_WEBHOOK_URL;
+      if (slackWebhookUrl) {
+        try {
+          const opener = payload?.sender?.login || payload?.issue?.user?.login || "unknown";
+          const issueTitle = payload?.issue?.title || "No Title";
+          const slackMessage = `New issue opened in *${repoFullName}*\n*Issue:* #${issueNumber} - ${issueTitle}\n*Opened by:* ${opener}`;
+
+          console.log(`[Processor] Sending Slack notification for issue #${issueNumber}`);
+          await sendSlackNotification(slackWebhookUrl, slackMessage);
+
+          await db.insert(actions).values({
+            eventId: event.id,
+            kind: "slack",
+            target: `issue #${issueNumber}`,
+            detail: "Sent Slack notification",
+            status: "success",
+          });
+        } catch (err: any) {
+          slackFailed = true;
+          slackErrorMsg = err.message || "Unknown error";
+          console.error(`[Processor] Failed to send Slack notification:`, err);
+
+          await db.insert(actions).values({
+            eventId: event.id,
+            kind: "slack",
+            target: `issue #${issueNumber}`,
+            detail: "Failed to send Slack notification",
+            status: "failed",
+            error: slackErrorMsg,
+          });
+        }
+      }
+
       // Update final event status
-      if (labelFailed || commentFailed) {
+      if (labelFailed || commentFailed || slackFailed) {
         const combinedError = [
           labelFailed ? `Label: ${labelErrorMsg}` : null,
           commentFailed ? `Comment: ${commentErrorMsg}` : null,
+          slackFailed ? `Slack: ${slackErrorMsg}` : null,
         ]
           .filter(Boolean)
           .join(" | ");
