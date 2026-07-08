@@ -62,4 +62,13 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
   },
+  logger: {
+    error(code, metadata) {
+      console.error(
+        " [NEXTAUTH_RAW_ERROR]",
+        code,
+        JSON.stringify(metadata, null, 2)
+      );
+    },
+  },
 };
