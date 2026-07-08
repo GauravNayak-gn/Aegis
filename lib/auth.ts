@@ -47,6 +47,36 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
+    async signIn({ user, account }) {
+      if (account && account.provider === "github") {
+        try {
+          await db
+            .update(accounts)
+            .set({
+              access_token: account.access_token,
+              refresh_token: account.refresh_token,
+              expires_at: account.expires_at,
+              scope: account.scope,
+            })
+            .where(
+              and(
+                eq(accounts.provider, account.provider),
+                eq(accounts.providerAccountId, account.providerAccountId)
+              )
+            );
+          console.log(
+            "[NextAuth] Successfully updated database access token in signIn callback for providerAccountId:",
+            account.providerAccountId
+          );
+        } catch (dbErr) {
+          console.error(
+            "[NextAuth] Failed to update access token in signIn callback:",
+            dbErr
+          );
+        }
+      }
+      return true;
+    },
     async jwt({ token, account, user }) {
       if (account) {
         token.accessToken = account.access_token;
