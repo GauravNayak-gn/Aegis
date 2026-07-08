@@ -4,24 +4,7 @@ import { events, repositories } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
 import { waitUntil } from "@vercel/functions";
-
-// Stub for processing events in the background
-async function processEvent(eventId: number) {
-  console.log(`[Background] Started processing event ID: ${eventId}`);
-  
-  // Here we would perform logic based on the event:
-  // 1. Fetch action rules matching this repository and event type
-  // 2. Evaluate rules against webhook payload fields
-  // 3. Execute actions (applying label, posting comment, Slack alert, AI triage)
-  // 4. Update the event status to 'completed' or 'failed'
-  
-  try {
-    // In a real application, this is where rule matching & executions happen.
-    console.log(`[Background] Successfully processed event ID: ${eventId}`);
-  } catch (err: any) {
-    console.error(`[Background] Error processing event ID: ${eventId}`, err);
-  }
-}
+import { processEvent } from "../../../../lib/processor";
 
 export async function POST(request: NextRequest) {
   try {
