@@ -1,8 +1,8 @@
 CREATE TABLE "account" (
-	"userId" text NOT NULL,
+	"user_id" text NOT NULL,
 	"type" text NOT NULL,
 	"provider" text NOT NULL,
-	"providerAccountId" text NOT NULL,
+	"provider_account_id" text NOT NULL,
 	"refresh_token" text,
 	"access_token" text,
 	"expires_at" integer,
@@ -10,7 +10,7 @@ CREATE TABLE "account" (
 	"scope" text,
 	"id_token" text,
 	"session_state" text,
-	CONSTRAINT "account_provider_providerAccountId_pk" PRIMARY KEY("provider","providerAccountId")
+	CONSTRAINT "account_provider_provider_account_id_pk" PRIMARY KEY("provider","provider_account_id")
 );
 --> statement-breakpoint
 CREATE TABLE "action" (
@@ -66,8 +66,8 @@ CREATE TABLE "rule" (
 );
 --> statement-breakpoint
 CREATE TABLE "session" (
-	"sessionToken" text PRIMARY KEY NOT NULL,
-	"userId" text NOT NULL,
+	"session_token" text PRIMARY KEY NOT NULL,
+	"user_id" text NOT NULL,
 	"expires" timestamp NOT NULL
 );
 --> statement-breakpoint
@@ -75,7 +75,7 @@ CREATE TABLE "user" (
 	"id" text PRIMARY KEY NOT NULL,
 	"name" text,
 	"email" text,
-	"emailVerified" timestamp,
+	"email_verified" timestamp,
 	"image" text,
 	CONSTRAINT "user_email_unique" UNIQUE("email")
 );
@@ -87,9 +87,9 @@ CREATE TABLE "verificationToken" (
 	CONSTRAINT "verificationToken_identifier_token_pk" PRIMARY KEY("identifier","token")
 );
 --> statement-breakpoint
-ALTER TABLE "account" ADD CONSTRAINT "account_userId_user_id_fk" FOREIGN KEY ("userId") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "account" ADD CONSTRAINT "account_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "action" ADD CONSTRAINT "action_event_id_event_id_fk" FOREIGN KEY ("event_id") REFERENCES "public"."event"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "event" ADD CONSTRAINT "event_repository_id_repository_id_fk" FOREIGN KEY ("repository_id") REFERENCES "public"."repository"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "repository" ADD CONSTRAINT "repository_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "rule" ADD CONSTRAINT "rule_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "session" ADD CONSTRAINT "session_userId_user_id_fk" FOREIGN KEY ("userId") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "session" ADD CONSTRAINT "session_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;
