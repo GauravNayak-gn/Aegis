@@ -1,6 +1,12 @@
-import { Pool } from "@neondatabase/serverless";
+import { Pool, neonConfig } from "@neondatabase/serverless";
 import { drizzle, type NeonDatabase } from "drizzle-orm/neon-serverless";
 import * as schema from "./schema";
+import ws from "ws";
+
+// Force Neon to use WebSocket connection (port 443) instead of direct TCP (port 5432)
+if (typeof window === "undefined") {
+  neonConfig.webSocketConstructor = ws;
+}
 
 const globalForDb = globalThis as unknown as {
   pool: Pool | undefined;
@@ -27,6 +33,7 @@ export const db =
 if (process.env.NODE_ENV !== "production") {
   globalForDb.db = db;
 }
+
 
 
 
