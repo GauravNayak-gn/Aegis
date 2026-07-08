@@ -1,10 +1,10 @@
 import { Pool, neonConfig } from "@neondatabase/serverless";
 import { drizzle, type NeonDatabase } from "drizzle-orm/neon-serverless";
-import * as schema from "./schema";
 import ws from "ws";
+import * as schema from "./schema";
 
-// Force Neon to use WebSocket connection (port 443) instead of direct TCP (port 5432)
-if (typeof window === "undefined") {
+// Fixes the local Node.js WebSocket environment absence
+if (process.env.NODE_ENV !== "production") {
   neonConfig.webSocketConstructor = ws;
 }
 
