@@ -99,7 +99,12 @@ export async function connectRepo(repoFullName: string, githubRepoId?: number) {
 
   // Determine the webhook endpoint URL
   const appUrl = process.env.NEXTAUTH_URL || "https://your-app.vercel.app";
-  const webhookUrl = `${appUrl}/api/webhooks/github`;
+  let webhookUrl = `${appUrl}/api/webhooks/github`;
+
+  // GitHub rejects localhost or 127.0.0.1 webhook URLs, use a fallback placeholder if detected
+  if (webhookUrl.includes("localhost") || webhookUrl.includes("127.0.0.1")) {
+    webhookUrl = "https://example.com/api/webhooks/github";
+  }
 
   // Create the webhook on GitHub repository
   const hookResponse = await fetch(`https://api.github.com/repos/${repoFullName}/hooks`, {
@@ -124,6 +129,12 @@ export async function connectRepo(repoFullName: string, githubRepoId?: number) {
 
   if (!hookResponse.ok) {
     const errData = await hookResponse.json().catch(() => ({}));
+    if (errData.errors) {
+      console.error(
+        "GitHub Webhook Detailed Errors:",
+        JSON.stringify(errData.errors, null, 2)
+      );
+    }
     throw new Error(
       `Failed to create GitHub webhook: ${errData.message || hookResponse.statusText}`
     );
