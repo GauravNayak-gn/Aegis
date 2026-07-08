@@ -1,8 +1,31 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { signIn, signOut } from "next-auth/react";
 import { connectRepo } from "../actions/repo";
+
+export interface EventWithActions {
+  id: number;
+  deliveryId: string;
+  repositoryId: number;
+  eventType: string;
+  action: string | null;
+  status: string;
+  attempts: number;
+  lastError: string | null;
+  createdAt: Date | string;
+  repoFullName: string;
+  actions: {
+    id: number;
+    eventId: number;
+    kind: string;
+    target: string | null;
+    detail: string | null;
+    status: string;
+    error: string | null;
+    createdAt: Date | string;
+  }[];
+}
 
 interface Repo {
   githubRepoId: number;
@@ -24,18 +47,65 @@ interface User {
 interface DashboardClientProps {
   initialRepos: Repo[];
   initialError: string | null;
+  initialEvents: EventWithActions[];
   user?: User;
 }
 
 export default function DashboardClient({
   initialRepos,
   initialError,
+  initialEvents,
   user,
 }: DashboardClientProps) {
   const [repos, setRepos] = useState<Repo[]>(initialRepos);
   const [error, setError] = useState<string | null>(initialError);
   const [searchQuery, setSearchQuery] = useState("");
   const [connectingId, setConnectingId] = useState<number | null>(null);
+  const [events, setEvents] = useState<EventWithActions[]>(initialEvents);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch("/api/events");
+        if (!res.ok) return;
+        const newEvents: EventWithActions[] = await res.json();
+
+        setEvents((prev) => {
+          const prevIds = new Set(prev.map((e) => e.id));
+          const toAdd = newEvents.filter((e) => !prevIds.has(e.id));
+
+          if (toAdd.length === 0) return prev;
+
+          // Prepend new events to the top
+          return [...toAdd, ...prev];
+        });
+      } catch (err) {
+        console.error("Failed to poll events:", err);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [user]);
+
+  const formatTime = (dateVal: Date | string) => {
+    if (!mounted) return "";
+    const d = typeof dateVal === "string" ? new Date(dateVal) : dateVal;
+    return d.toLocaleTimeString(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }) + " " + d.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+    });
+  };
 
   // If user is not authenticated, show a gorgeous login screen
   if (!user) {
@@ -325,6 +395,112 @@ export default function DashboardClient({
             ))}
           </div>
         )}
+
+        {/* Real-Time Event Log Section */}
+        <div className="mt-16">
+          <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+                <span className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-purple-500"></span>
+                </span>
+                Real-Time Event Log
+              </h2>
+              <p className="mt-1 text-sm text-zinc-400">
+                Live activity feed of GitHub webhook events and automation actions.
+              </p>
+            </div>
+            <div className="text-xs text-zinc-500 bg-zinc-900/60 border border-zinc-800/80 rounded-lg px-3 py-1.5 backdrop-blur-md self-start sm:self-auto">
+              Polling every 5s
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-900/20 backdrop-blur-md shadow-2xl">
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-left text-sm text-zinc-300">
+                <thead className="border-b border-zinc-800/80 bg-zinc-900/50 text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                  <tr>
+                    <th scope="col" className="px-6 py-4">Time</th>
+                    <th scope="col" className="px-6 py-4">Repository</th>
+                    <th scope="col" className="px-6 py-4">Event Type</th>
+                    <th scope="col" className="px-6 py-4">Action Taken</th>
+                    <th scope="col" className="px-6 py-4">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800/50 bg-transparent">
+                  {events.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-12 text-center text-zinc-500 italic">
+                        No webhook events recorded yet. Connect a repository and trigger an issue or pull request.
+                      </td>
+                    </tr>
+                  ) : (
+                    events.map((evt) => (
+                      <tr key={evt.id} className="group hover:bg-zinc-900/20 transition-colors">
+                        <td className="whitespace-nowrap px-6 py-4 text-xs font-mono text-zinc-400">
+                          {formatTime(evt.createdAt)}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 font-medium text-zinc-200">
+                          {evt.repoFullName}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-xs">
+                          <span className="rounded-md bg-zinc-800/60 px-2.5 py-1 font-mono text-zinc-300 border border-zinc-700/50">
+                            {evt.eventType}{evt.action ? `.${evt.action}` : ""}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          {evt.actions && evt.actions.length > 0 ? (
+                            <div className="flex flex-col gap-1.5">
+                              {evt.actions.map((act) => (
+                                <div key={act.id} className="flex items-center gap-1.5 text-xs text-zinc-300">
+                                  <span className={`h-1.5 w-1.5 rounded-full ${
+                                    act.status === "completed" ? "bg-emerald-400" :
+                                    act.status === "failed" ? "bg-rose-400" : "bg-amber-400"
+                                  }`} />
+                                  <span>
+                                    {act.kind === "slack" ? "Sent Slack notification" :
+                                     act.kind === "label" ? `Added '${act.target}' label` :
+                                     act.kind === "comment" ? "Posted welcome comment" :
+                                     act.detail || act.kind}
+                                  </span>
+                                  {act.error && (
+                                    <span className="text-[10px] text-rose-400 font-mono">
+                                      ({act.error})
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          ) : evt.lastError ? (
+                            <span className="text-xs text-rose-400 font-mono italic">
+                              Error: {evt.lastError}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-zinc-500 italic">No actions triggered</span>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4">
+                          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold border ${
+                            evt.status === "completed" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 shadow-sm shadow-emerald-500/5" :
+                            evt.status === "failed" ? "bg-rose-500/10 border-rose-500/20 text-rose-400 shadow-sm shadow-rose-500/5" :
+                            "bg-amber-500/10 border-amber-500/20 text-amber-400 animate-pulse shadow-sm shadow-amber-500/5"
+                          }`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${
+                              evt.status === "completed" ? "bg-emerald-400" :
+                              evt.status === "failed" ? "bg-rose-400" : "bg-amber-400"
+                            }`} />
+                            {evt.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </main>
     </div>
   );
