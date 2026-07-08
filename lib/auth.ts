@@ -19,6 +19,7 @@ declare module "next-auth" {
 declare module "next-auth/jwt" {
   interface JWT {
     accessToken?: string;
+    id?: string;
   }
 }
 
@@ -44,15 +45,19 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async jwt({ token, account }) {
+    async jwt({ token, account, user }) {
       if (account) {
         token.accessToken = account.access_token;
+      }
+      if (user) {
+        token.id = user.id;
       }
       return token;
     },
     async session({ session, token }) {
-      if (session) {
+      if (session && session.user) {
         session.accessToken = token.accessToken;
+        session.user.id = token.id;
       }
       return session;
     },
