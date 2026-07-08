@@ -3,7 +3,7 @@ import { authOptions } from "../../lib/auth";
 import { listUserRepos } from "../actions/repo";
 import DashboardClient from "./dashboard-client";
 import { db } from "../../db";
-import { events, actions, repositories } from "../../db/schema";
+import { events, actions, repositories, rules } from "../../db/schema";
 import { eq, desc, inArray, asc } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +18,7 @@ export default async function DashboardPage() {
         initialRepos={[]}
         initialError={null}
         initialEvents={[]}
+        initialRules={[]}
       />
     );
   }
@@ -77,11 +78,25 @@ export default async function DashboardPage() {
     }
   }
 
+  let initialRules: any[] = [];
+  if (userId) {
+    try {
+      initialRules = await db
+        .select()
+        .from(rules)
+        .where(eq(rules.userId, userId))
+        .orderBy(desc(rules.createdAt));
+    } catch (dbErr) {
+      console.error("Failed to load initial rules on server:", dbErr);
+    }
+  }
+
   return (
     <DashboardClient
       initialRepos={repos}
       initialError={error}
       initialEvents={initialEvents}
+      initialRules={initialRules}
       user={session.user}
     />
   );

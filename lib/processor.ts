@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { events, repositories, accounts, actions } from "../db/schema";
+import { events, repositories, accounts, actions, rules } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 import { addLabel, postComment } from "./github/client";
 import { sendSlackNotification } from "./slack/client";
@@ -69,7 +69,7 @@ export async function processEvent(eventId: number) {
     const token = account.access_token;
     const repoFullName = repo.fullName;
 
-    // 3. Implement hardcoded rule:
+    // 3. Dynamic Rules Engine evaluation:
     // If the event_type is 'issues' and the payload action is 'opened'
     if (event.eventType === "issues" && payload?.action === "opened") {
       const issueNumber = payload?.issue?.number;
@@ -83,116 +83,194 @@ export async function processEvent(eventId: number) {
         return;
       }
 
-      let labelFailed = false;
-      let commentFailed = false;
-      let slackFailed = false;
-      let labelErrorMsg = "";
-      let commentErrorMsg = "";
-      let slackErrorMsg = "";
+      // Fetch active rules belonging to the repository owner
+      const userRules = await db
+        .select()
+        .from(rules)
+        .where(and(eq(rules.userId, repo.userId), eq(rules.active, true)));
 
-      // Call addLabel to add 'needs-triage' label
-      try {
-        console.log(`[Processor] Adding 'needs-triage' label to issue #${issueNumber}`);
-        await addLabel(repoFullName, issueNumber, "needs-triage", token);
+      let matchedRuleCount = 0;
+      let totalFailedActions = 0;
+      const actionErrors: string[] = [];
 
-        await db.insert(actions).values({
-          eventId: event.id,
-          kind: "label",
-          target: `issue #${issueNumber}`,
-          detail: "Added 'needs-triage' label",
-          status: "success",
-        });
-      } catch (err: any) {
-        labelFailed = true;
-        labelErrorMsg = err.message || "Unknown error";
-        console.error(`[Processor] Failed to add label:`, err);
+      for (const rule of userRules) {
+        // Pull target metadata based on matchField
+        let valueToCheck = "";
+        if (rule.matchField === "title") {
+          valueToCheck = payload?.issue?.title || "";
+        } else if (rule.matchField === "body") {
+          valueToCheck = payload?.issue?.body || "";
+        } else if (rule.matchField === "author") {
+          valueToCheck =
+            payload?.issue?.user?.login || payload?.sender?.login || "";
+        } else {
+          continue; // Unknown field
+        }
 
-        await db.insert(actions).values({
-          eventId: event.id,
-          kind: "label",
-          target: `issue #${issueNumber}`,
-          detail: "Failed to add 'needs-triage' label",
-          status: "failed",
-          error: labelErrorMsg,
-        });
-      }
+        const matchValue = rule.matchValue || "";
+        let isMatch = false;
 
-      // Call postComment to post a welcome message
-      try {
-        const welcomeMessage =
-          "Thank you for opening this issue! Our automation bot has received it.";
-        console.log(`[Processor] Posting welcome comment to issue #${issueNumber}`);
-        await postComment(repoFullName, issueNumber, welcomeMessage, token);
+        if (rule.matchOp === "equals") {
+          isMatch = valueToCheck.toLowerCase() === matchValue.toLowerCase();
+        } else if (rule.matchOp === "contains") {
+          isMatch = valueToCheck
+            .toLowerCase()
+            .includes(matchValue.toLowerCase());
+        } else if (rule.matchOp === "regex") {
+          try {
+            const regex = new RegExp(matchValue, "i");
+            isMatch = regex.test(valueToCheck);
+          } catch (regErr: any) {
+            console.error(
+              `[Processor] Invalid regex "${matchValue}" in rule ID ${rule.id}:`,
+              regErr
+            );
+            isMatch = false;
+          }
+        }
 
-        await db.insert(actions).values({
-          eventId: event.id,
-          kind: "comment",
-          target: `issue #${issueNumber}`,
-          detail: "Posted welcome comment",
-          status: "success",
-        });
-      } catch (err: any) {
-        commentFailed = true;
-        commentErrorMsg = err.message || "Unknown error";
-        console.error(`[Processor] Failed to post comment:`, err);
+        if (isMatch) {
+          matchedRuleCount++;
+          console.log(
+            `[Processor] Rule "${rule.name}" (ID ${rule.id}) matched for issue #${issueNumber}`
+          );
 
-        await db.insert(actions).values({
-          eventId: event.id,
-          kind: "comment",
-          target: `issue #${issueNumber}`,
-          detail: "Failed to post welcome comment",
-          status: "failed",
-          error: commentErrorMsg,
-        });
-      }
+          // Execute actions sequentially
+          // 1. Add Label
+          if (rule.addLabel) {
+            try {
+              console.log(
+                `[Processor] Adding label '${rule.addLabel}' to issue #${issueNumber}`
+              );
+              await addLabel(repoFullName, issueNumber, rule.addLabel, token);
 
-      // Call sendSlackNotification to post a Slack alert if Webhook URL is set
-      const slackWebhookUrl = process.env.SLACK_WEBHOOK_URL;
-      if (slackWebhookUrl) {
-        try {
-          const opener = payload?.sender?.login || payload?.issue?.user?.login || "unknown";
-          const issueTitle = payload?.issue?.title || "No Title";
-          const slackMessage = `New issue opened in *${repoFullName}*\n*Issue:* #${issueNumber} - ${issueTitle}\n*Opened by:* ${opener}`;
+              await db.insert(actions).values({
+                eventId: event.id,
+                kind: "label",
+                target: rule.addLabel,
+                detail: `Added '${rule.addLabel}' label via rule: ${rule.name}`,
+                status: "completed",
+              });
+            } catch (err: any) {
+              totalFailedActions++;
+              const errorMsg = err.message || "Unknown error";
+              actionErrors.push(`Label (${rule.addLabel}): ${errorMsg}`);
+              console.error(
+                `[Processor] Failed to add label via rule ${rule.id}:`,
+                err
+              );
 
-          console.log(`[Processor] Sending Slack notification for issue #${issueNumber}`);
-          await sendSlackNotification(slackWebhookUrl, slackMessage);
+              await db.insert(actions).values({
+                eventId: event.id,
+                kind: "label",
+                target: rule.addLabel,
+                detail: `Failed to add '${rule.addLabel}' label via rule: ${rule.name}`,
+                status: "failed",
+                error: errorMsg,
+              });
+            }
+          }
 
-          await db.insert(actions).values({
-            eventId: event.id,
-            kind: "slack",
-            target: `issue #${issueNumber}`,
-            detail: "Sent Slack notification",
-            status: "success",
-          });
-        } catch (err: any) {
-          slackFailed = true;
-          slackErrorMsg = err.message || "Unknown error";
-          console.error(`[Processor] Failed to send Slack notification:`, err);
+          // 2. Post Comment
+          if (rule.postComment) {
+            try {
+              console.log(
+                `[Processor] Posting welcome comment to issue #${issueNumber}`
+              );
+              await postComment(
+                repoFullName,
+                issueNumber,
+                rule.postComment,
+                token
+              );
 
-          await db.insert(actions).values({
-            eventId: event.id,
-            kind: "slack",
-            target: `issue #${issueNumber}`,
-            detail: "Failed to send Slack notification",
-            status: "failed",
-            error: slackErrorMsg,
-          });
+              await db.insert(actions).values({
+                eventId: event.id,
+                kind: "comment",
+                target: `issue #${issueNumber}`,
+                detail: `Posted comment via rule: ${rule.name}`,
+                status: "completed",
+              });
+            } catch (err: any) {
+              totalFailedActions++;
+              const errorMsg = err.message || "Unknown error";
+              actionErrors.push(`Comment: ${errorMsg}`);
+              console.error(
+                `[Processor] Failed to post comment via rule ${rule.id}:`,
+                err
+              );
+
+              await db.insert(actions).values({
+                eventId: event.id,
+                kind: "comment",
+                target: `issue #${issueNumber}`,
+                detail: `Failed to post comment via rule: ${rule.name}`,
+                status: "failed",
+                error: errorMsg,
+              });
+            }
+          }
+
+          // 3. Slack notification
+          if (rule.slackNotify) {
+            const slackWebhookUrl = process.env.SLACK_WEBHOOK_URL;
+            if (slackWebhookUrl) {
+              try {
+                const opener =
+                  payload?.issue?.user?.login ||
+                  payload?.sender?.login ||
+                  "unknown";
+                const issueTitle = payload?.issue?.title || "No Title";
+                const slackMessage = `Rule Match: *${rule.name}* triggered for issue #${issueNumber} in *${repoFullName}*\n*Title:* ${issueTitle}\n*Opened by:* ${opener}`;
+
+                console.log(
+                  `[Processor] Sending Slack notification for rule ${rule.id}`
+                );
+                await sendSlackNotification(slackWebhookUrl, slackMessage);
+
+                await db.insert(actions).values({
+                  eventId: event.id,
+                  kind: "slack",
+                  target: `Slack Channel`,
+                  detail: `Sent Slack notification via rule: ${rule.name}`,
+                  status: "completed",
+                });
+              } catch (err: any) {
+                totalFailedActions++;
+                const errorMsg = err.message || "Unknown error";
+                actionErrors.push(`Slack: ${errorMsg}`);
+                console.error(
+                  `[Processor] Failed to send Slack alert via rule ${rule.id}:`,
+                  err
+                );
+
+                await db.insert(actions).values({
+                  eventId: event.id,
+                  kind: "slack",
+                  target: `Slack Channel`,
+                  detail: `Failed to send Slack notification via rule: ${rule.name}`,
+                  status: "failed",
+                  error: errorMsg,
+                });
+              }
+            } else {
+              console.warn(
+                `[Processor] Slack notification skipped: SLACK_WEBHOOK_URL is not set`
+              );
+            }
+          }
         }
       }
 
-      // Update final event status
-      if (labelFailed || commentFailed || slackFailed) {
-        const combinedError = [
-          labelFailed ? `Label: ${labelErrorMsg}` : null,
-          commentFailed ? `Comment: ${commentErrorMsg}` : null,
-          slackFailed ? `Slack: ${slackErrorMsg}` : null,
-        ]
-          .filter(Boolean)
-          .join(" | ");
+      console.log(
+        `[Processor] Processed ${userRules.length} rules. ${matchedRuleCount} matched, ${totalFailedActions} actions failed.`
+      );
 
+      // Update final event status
+      if (totalFailedActions > 0) {
         await db
           .update(events)
-          .set({ status: "failed", lastError: combinedError })
+          .set({ status: "failed", lastError: actionErrors.join(" | ") })
           .where(eq(events.id, eventId));
       } else {
         await db
@@ -201,9 +279,11 @@ export async function processEvent(eventId: number) {
           .where(eq(events.id, eventId));
       }
     } else {
-      // Event received but did not trigger the hardcoded issues/opened rule
+      // Event received but did not trigger rule pipeline
       console.log(
-        `[Processor] Event ID ${eventId} (${event.eventType}.${payload?.action || "none"}) skipped (no matching rule)`
+        `[Processor] Event ID ${eventId} (${event.eventType}.${
+          payload?.action || "none"
+        }) skipped (no matching trigger)`
       );
       await db
         .update(events)

@@ -121,7 +121,7 @@ export const rules = pgTable("rule", {
   matchValue: text("match_value"),
   addLabel: text("add_label"),
   postComment: text("post_comment"),
-  slackNotify: text("slack_notify"),
+  slackNotify: boolean("slack_notify").default(false).notNull(),
   aiTriage: boolean("ai_triage").default(false).notNull(),
   active: boolean("active").default(true).notNull(),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
