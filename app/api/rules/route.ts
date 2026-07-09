@@ -58,6 +58,7 @@ export async function POST(request: NextRequest) {
       addLabel,
       postComment,
       slackNotify,
+      aiTriage,
     } = body;
 
     // Validation
@@ -98,6 +99,7 @@ export async function POST(request: NextRequest) {
         addLabel: addLabel || null,
         postComment: postComment || null,
         slackNotify: !!slackNotify,
+        aiTriage: !!aiTriage,
         active: true,
       })
       .returning();

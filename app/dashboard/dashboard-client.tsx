@@ -93,6 +93,7 @@ export default function DashboardClient({
   const [actionLabel, setActionLabel] = useState("");
   const [actionComment, setActionComment] = useState("");
   const [actionSlack, setActionSlack] = useState(false);
+  const [actionAiTriage, setActionAiTriage] = useState(false);
   const [creatingRule, setCreatingRule] = useState(false);
   const [ruleError, setRuleError] = useState<string | null>(null);
 
@@ -121,6 +122,7 @@ export default function DashboardClient({
           addLabel: actionLabel,
           postComment: actionComment,
           slackNotify: actionSlack,
+          aiTriage: actionAiTriage,
         }),
       });
 
@@ -138,6 +140,7 @@ export default function DashboardClient({
       setActionLabel("");
       setActionComment("");
       setActionSlack(false);
+      setActionAiTriage(false);
     } catch (err: any) {
       setRuleError(err.message || "An error occurred while creating the rule.");
     } finally {
@@ -618,6 +621,19 @@ export default function DashboardClient({
                     </label>
                   </div>
 
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="actionAiTriage"
+                      checked={actionAiTriage}
+                      onChange={(e) => setActionAiTriage(e.target.checked)}
+                      className="h-4 w-4 rounded border-zinc-800 bg-zinc-900 text-purple-600 focus:ring-purple-500"
+                    />
+                    <label htmlFor="actionAiTriage" className="text-sm font-medium text-zinc-300 select-none">
+                      Run DeepSeek AI Triage
+                    </label>
+                  </div>
+
                   <button
                     type="submit"
                     disabled={creatingRule}
@@ -675,7 +691,13 @@ export default function DashboardClient({
                                     <span>Send Slack alert</span>
                                   </div>
                                 )}
-                                {!rule.addLabel && !rule.postComment && !rule.slackNotify && (
+                                {rule.aiTriage && (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
+                                    <span>Run DeepSeek AI Triage</span>
+                                  </div>
+                                )}
+                                {!rule.addLabel && !rule.postComment && !rule.slackNotify && !rule.aiTriage && (
                                   <span className="text-zinc-600 italic">No actions configured</span>
                                 )}
                               </div>
