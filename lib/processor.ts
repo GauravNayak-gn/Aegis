@@ -179,7 +179,7 @@ Do not include markdown tags like \`\`\`json or backticks. Respond only with raw
                 response_format: { type: "json_object" },
               });
 
-              console.log("[Processor] OpenCode Raw Response Structure:", JSON.stringify(response, null, 2));
+
 
               if (!response || typeof response !== "object" || !("choices" in response)) {
                 console.error("[Processor] OpenCode API returned a 404 endpoint mismatch");
