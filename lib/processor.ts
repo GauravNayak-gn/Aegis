@@ -292,12 +292,20 @@ Do not include markdown tags like \`\`\`json or backticks. Respond only with raw
           if (rule.postComment) {
             try {
               console.log(
-                `[Processor] Posting welcome comment to issue #${issueNumber}`
+                `[Processor] Posting comment to issue #${issueNumber}`
               );
+
+              let commentBody = rule.postComment;
+              if (rule.aiTriage && aiTriageRan && aiInsight) {
+                const customPrefix = rule.postComment ? `${rule.postComment}\n\n` : '';
+                const aiMarkdown = `### 🤖 GitShield AI Automated Triage\n- **Priority:** ${aiInsight.priority}\n- **Summary:** ${aiInsight.summary}`;
+                commentBody = `${customPrefix}${aiMarkdown}`;
+              }
+
               await postComment(
                 repoFullName,
                 issueNumber,
-                rule.postComment,
+                commentBody,
                 token
               );
 
