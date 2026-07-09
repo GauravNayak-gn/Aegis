@@ -145,7 +145,7 @@ export async function processEvent(eventId: number) {
               console.log(`[Processor] Running DeepSeek AI Triage for rule ${rule.id}`);
               const openai = new OpenAI({
                 apiKey: process.env.OPENCODE_API_KEY,
-                baseURL: "https://api.opencode.ai/v1",
+                baseURL: process.env.OPENCODE_BASE_URL || "https://api.opencode.ai",
               });
 
               const issueTitle = payload?.issue?.title || "No Title";
@@ -172,42 +172,74 @@ Do not include markdown tags like \`\`\`json or backticks. Respond only with raw
 
               console.log("[Processor] OpenCode Raw Response Structure:", JSON.stringify(response, null, 2));
 
-              const jsonContent = response?.choices?.[0]?.message?.content || "{}";
-              console.log("[Processor] DeepSeek raw response:", jsonContent);
-              
-              const parsed = JSON.parse(jsonContent);
-              if (parsed.summary && parsed.priority) {
-                aiInsight = {
-                  summary: parsed.summary,
-                  priority: parsed.priority,
-                };
-                aiTriageRan = true;
-
-                const detailText = `[AI Triage - Priority: ${parsed.priority}] ${parsed.summary}`;
+              if (!response || typeof response !== "object" || !("choices" in response)) {
+                console.error("[Processor] OpenCode API returned a 404 endpoint mismatch");
                 await db.insert(actions).values({
                   eventId: event.id,
                   kind: "triage",
                   target: `issue #${issueNumber}`,
-                  detail: detailText,
-                  status: "completed",
+                  detail: `OpenCode API returned a 404 endpoint mismatch: ${String(response)}`,
+                  status: "failed",
+                  error: "Invalid API response structure or 404 Not Found",
                 });
               } else {
-                throw new Error("Invalid JSON structure in DeepSeek response");
+                const jsonContent = response?.choices?.[0]?.message?.content || "{}";
+                console.log("[Processor] DeepSeek raw response:", jsonContent);
+                
+                try {
+                  const parsed = JSON.parse(jsonContent);
+                  if (parsed.summary && parsed.priority) {
+                    aiInsight = {
+                      summary: parsed.summary,
+                      priority: parsed.priority,
+                    };
+                    aiTriageRan = true;
+
+                    const detailText = `[AI Triage - Priority: ${parsed.priority}] ${parsed.summary}`;
+                    await db.insert(actions).values({
+                      eventId: event.id,
+                      kind: "triage",
+                      target: `issue #${issueNumber}`,
+                      detail: detailText,
+                      status: "completed",
+                    });
+                  } else {
+                    console.error("[Processor] Invalid JSON structure in DeepSeek response:", jsonContent);
+                    await db.insert(actions).values({
+                      eventId: event.id,
+                      kind: "triage",
+                      target: `issue #${issueNumber}`,
+                      detail: `Invalid JSON structure: ${jsonContent}`,
+                      status: "failed",
+                      error: "Missing summary or priority fields",
+                    });
+                  }
+                } catch (parseErr: any) {
+                  console.error("[Processor] JSON parse error on DeepSeek response:", parseErr);
+                  await db.insert(actions).values({
+                    eventId: event.id,
+                    kind: "triage",
+                    target: `issue #${issueNumber}`,
+                    detail: `Failed to parse JSON response: ${jsonContent}`,
+                    status: "failed",
+                    error: parseErr.message || "JSON Parse Error",
+                  });
+                }
               }
             } catch (err: any) {
-              totalFailedActions++;
-              const errorMsg = err.message || "Unknown error";
-              actionErrors.push(`AI Triage: ${errorMsg}`);
-              console.error(`[Processor] Failed DeepSeek AI Triage for rule ${rule.id}:`, err);
-
-              await db.insert(actions).values({
-                eventId: event.id,
-                kind: "triage",
-                target: `issue #${issueNumber}`,
-                detail: `Failed to run DeepSeek AI triage via rule: ${rule.name}`,
-                status: "failed",
-                error: errorMsg,
-              });
+              console.error(`[Processor] Failed DeepSeek AI Triage (tolerated error) for rule ${rule.id}:`, err);
+              try {
+                await db.insert(actions).values({
+                  eventId: event.id,
+                  kind: "triage",
+                  target: `issue #${issueNumber}`,
+                  detail: `AI triage failed: ${err.message || "Unknown error"}`,
+                  status: "failed",
+                  error: err.message || "AI triage error",
+                });
+              } catch (dbErr) {
+                console.error("[Processor] Failed to log failed triage action:", dbErr);
+              }
             }
           }
 
