@@ -298,7 +298,7 @@ Do not include markdown tags like \`\`\`json or backticks. Respond only with raw
               let commentBody = rule.postComment;
               if (rule.aiTriage && aiTriageRan && aiInsight) {
                 const customPrefix = rule.postComment ? `${rule.postComment}\n\n` : '';
-                const aiMarkdown = `### 🤖 GitShield AI Automated Triage\n- **Priority:** ${aiInsight.priority}\n- **Summary:** ${aiInsight.summary}`;
+                const aiMarkdown = `### 🤖 Aegis.ai Automated Triage\n- **Priority:** ${aiInsight.priority}\n- **Summary:** ${aiInsight.summary}`;
                 commentBody = `${customPrefix}${aiMarkdown}`;
               }
 
