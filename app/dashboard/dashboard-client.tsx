@@ -56,6 +56,7 @@ export interface Rule {
   addLabel: string | null;
   postComment: string | null;
   slackNotify: boolean;
+  slackWebhookUrl: string | null;
   aiTriage: boolean;
   active: boolean;
   createdAt: Date | string;
@@ -93,6 +94,7 @@ export default function DashboardClient({
   const [actionLabel, setActionLabel] = useState("");
   const [actionComment, setActionComment] = useState("");
   const [actionSlack, setActionSlack] = useState(false);
+  const [actionSlackUrl, setActionSlackUrl] = useState("");
   const [actionAiTriage, setActionAiTriage] = useState(false);
   const [creatingRule, setCreatingRule] = useState(false);
   const [ruleError, setRuleError] = useState<string | null>(null);
@@ -109,6 +111,7 @@ export default function DashboardClient({
     setActionLabel(rule.addLabel || "");
     setActionComment(rule.postComment || "");
     setActionSlack(rule.slackNotify);
+    setActionSlackUrl(rule.slackWebhookUrl || "");
     setActionAiTriage(rule.aiTriage);
     setRuleError(null);
   };
@@ -122,6 +125,7 @@ export default function DashboardClient({
     setActionLabel("");
     setActionComment("");
     setActionSlack(false);
+    setActionSlackUrl("");
     setActionAiTriage(false);
     setRuleError(null);
   };
@@ -179,6 +183,7 @@ export default function DashboardClient({
           addLabel: actionLabel,
           postComment: actionComment,
           slackNotify: actionSlack,
+          slackWebhookUrl: actionSlack ? actionSlackUrl : "",
           aiTriage: actionAiTriage,
         }),
       });
@@ -205,6 +210,7 @@ export default function DashboardClient({
       setActionLabel("");
       setActionComment("");
       setActionSlack(false);
+      setActionSlackUrl("");
       setActionAiTriage(false);
     } catch (err: any) {
       setRuleError(err.message || "An error occurred.");
@@ -685,6 +691,22 @@ export default function DashboardClient({
                       Trigger Slack Notification
                     </label>
                   </div>
+
+                  {actionSlack && (
+                    <div className="space-y-1.5 pl-6">
+                      <label htmlFor="actionSlackUrl" className="block text-xs font-semibold uppercase tracking-wider text-zinc-450">
+                        Slack Webhook URL (Optional)
+                      </label>
+                      <input
+                        type="url"
+                        id="actionSlackUrl"
+                        placeholder="https://hooks.slack.com/services/..."
+                        value={actionSlackUrl}
+                        onChange={(e) => setActionSlackUrl(e.target.value)}
+                        className="w-full rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-550 focus:border-purple-500/50 focus:outline-none"
+                      />
+                    </div>
+                  )}
 
                   <div className="flex items-center gap-2">
                     <input

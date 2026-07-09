@@ -338,7 +338,7 @@ Do not include markdown tags like \`\`\`json or backticks. Respond only with raw
 
           // 3. Slack notification
           if (rule.slackNotify) {
-            const slackWebhookUrl = process.env.SLACK_WEBHOOK_URL;
+            const slackWebhookUrl = rule.slackWebhookUrl || process.env.SLACK_WEBHOOK_URL;
             if (slackWebhookUrl) {
               try {
                 const opener =
@@ -385,7 +385,7 @@ Do not include markdown tags like \`\`\`json or backticks. Respond only with raw
               }
             } else {
               console.warn(
-                `[Processor] Slack notification skipped: SLACK_WEBHOOK_URL is not set`
+                `[Processor] Slack notification skipped for rule ${rule.id}: No Slack Webhook URL provided (and process.env.SLACK_WEBHOOK_URL is missing)`
               );
             }
           }

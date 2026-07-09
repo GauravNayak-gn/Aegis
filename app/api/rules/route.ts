@@ -58,6 +58,7 @@ export async function POST(request: NextRequest) {
       addLabel,
       postComment,
       slackNotify,
+      slackWebhookUrl,
       aiTriage,
     } = body;
 
@@ -99,6 +100,7 @@ export async function POST(request: NextRequest) {
         addLabel: addLabel || null,
         postComment: postComment || null,
         slackNotify: !!slackNotify,
+        slackWebhookUrl: slackWebhookUrl || null,
         aiTriage: !!aiTriage,
         active: true,
       })
@@ -188,6 +190,7 @@ export async function PATCH(request: NextRequest) {
       addLabel,
       postComment,
       slackNotify,
+      slackWebhookUrl,
       aiTriage,
     } = body;
 
@@ -226,6 +229,7 @@ export async function PATCH(request: NextRequest) {
         addLabel: addLabel || null,
         postComment: postComment || null,
         slackNotify: !!slackNotify,
+        slackWebhookUrl: slackWebhookUrl || null,
         aiTriage: !!aiTriage,
       })
       .where(and(eq(rules.id, ruleId), eq(rules.userId, userId)))

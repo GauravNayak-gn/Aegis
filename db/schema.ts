@@ -122,6 +122,7 @@ export const rules = pgTable("rule", {
   addLabel: text("add_label"),
   postComment: text("post_comment"),
   slackNotify: boolean("slack_notify").default(false).notNull(),
+  slackWebhookUrl: text("slack_webhook_url"),
   aiTriage: boolean("ai_triage").default(false).notNull(),
   active: boolean("active").default(true).notNull(),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
