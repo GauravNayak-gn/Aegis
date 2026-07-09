@@ -3,6 +3,7 @@ import { events, repositories, accounts, actions, rules } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 import { addLabel, postComment } from "./github/client";
 import { sendSlackNotification } from "./slack/client";
+import OpenAI from "openai";
 
 export async function processEvent(eventId: number) {
   console.log(`[Processor] Started processing event ID: ${eventId}`);
@@ -135,7 +136,80 @@ export async function processEvent(eventId: number) {
             `[Processor] Rule "${rule.name}" (ID ${rule.id}) matched for issue #${issueNumber}`
           );
 
-          // Execute actions sequentially
+          let aiTriageRan = false;
+          let aiInsight: { summary: string; priority: string } | null = null;
+
+          // AI Triage Action
+          if (rule.aiTriage) {
+            try {
+              console.log(`[Processor] Running DeepSeek AI Triage for rule ${rule.id}`);
+              const openai = new OpenAI({
+                apiKey: process.env.OPENCODE_API_KEY,
+                baseURL: "https://api.opencode.ai/v1",
+              });
+
+              const issueTitle = payload?.issue?.title || "No Title";
+              const issueBody = payload?.issue?.body || "No Description";
+
+              const response = await openai.chat.completions.create({
+                model: "deepseek-v4-flash",
+                messages: [
+                  {
+                    role: "system",
+                    content: `You are an AI assistant analyzing GitHub issues. Analyze the issue title and description body provided.
+You must respond with a raw JSON object containing exactly these two fields:
+1. "summary": A concise, single-paragraph summary of the issue.
+2. "priority": An urgency rating ('Low', 'Medium', 'High') followed by a colon and a 1-sentence justification string (e.g. "High: The login endpoint is throwing 500 errors preventing user access").
+Do not include markdown tags like \`\`\`json or backticks. Respond only with raw JSON.`,
+                  },
+                  {
+                    role: "user",
+                    content: `Title: ${issueTitle}\n\nBody: ${issueBody}`,
+                  },
+                ],
+                response_format: { type: "json_object" },
+              });
+
+              const jsonContent = response.choices[0]?.message?.content || "{}";
+              console.log("[Processor] DeepSeek raw response:", jsonContent);
+              
+              const parsed = JSON.parse(jsonContent);
+              if (parsed.summary && parsed.priority) {
+                aiInsight = {
+                  summary: parsed.summary,
+                  priority: parsed.priority,
+                };
+                aiTriageRan = true;
+
+                const detailText = `[AI Triage - Priority: ${parsed.priority}] ${parsed.summary}`;
+                await db.insert(actions).values({
+                  eventId: event.id,
+                  kind: "triage",
+                  target: `issue #${issueNumber}`,
+                  detail: detailText,
+                  status: "completed",
+                });
+              } else {
+                throw new Error("Invalid JSON structure in DeepSeek response");
+              }
+            } catch (err: any) {
+              totalFailedActions++;
+              const errorMsg = err.message || "Unknown error";
+              actionErrors.push(`AI Triage: ${errorMsg}`);
+              console.error(`[Processor] Failed DeepSeek AI Triage for rule ${rule.id}:`, err);
+
+              await db.insert(actions).values({
+                eventId: event.id,
+                kind: "triage",
+                target: `issue #${issueNumber}`,
+                detail: `Failed to run DeepSeek AI triage via rule: ${rule.name}`,
+                status: "failed",
+                error: errorMsg,
+              });
+            }
+          }
+
+          // Execute other actions sequentially
           // 1. Add Label
           if (rule.addLabel) {
             try {
@@ -221,7 +295,12 @@ export async function processEvent(eventId: number) {
                   payload?.sender?.login ||
                   "unknown";
                 const issueTitle = payload?.issue?.title || "No Title";
-                const slackMessage = `Rule Match: *${rule.name}* triggered for issue #${issueNumber} in *${repoFullName}*\n*Title:* ${issueTitle}\n*Opened by:* ${opener}`;
+                
+                let slackMessage = `Rule Match: *${rule.name}* triggered for issue #${issueNumber} in *${repoFullName}*\n*Title:* ${issueTitle}\n*Opened by:* ${opener}`;
+
+                if (aiTriageRan && aiInsight) {
+                  slackMessage += `\n\n*AI Triage Analysis:*\n*Priority:* ${aiInsight.priority}\n*Summary:* ${aiInsight.summary}`;
+                }
 
                 console.log(
                   `[Processor] Sending Slack notification for rule ${rule.id}`
