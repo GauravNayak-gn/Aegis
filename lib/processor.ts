@@ -145,7 +145,7 @@ export async function processEvent(eventId: number) {
               console.log(`[Processor] Running DeepSeek AI Triage for rule ${rule.id}`);
               const openai = new OpenAI({
                 apiKey: process.env.OPENCODE_API_KEY,
-                baseURL: process.env.OPENCODE_BASE_URL || "https://api.opencode.ai",
+                baseURL: process.env.OPENCODE_BASE_URL || "https://opencode.ai/zen/v1/",
               });
 
               const issueTitle = payload?.issue?.title || "No Title";
