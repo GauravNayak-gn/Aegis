@@ -170,7 +170,9 @@ Do not include markdown tags like \`\`\`json or backticks. Respond only with raw
                 response_format: { type: "json_object" },
               });
 
-              const jsonContent = response.choices[0]?.message?.content || "{}";
+              console.log("[Processor] OpenCode Raw Response Structure:", JSON.stringify(response, null, 2));
+
+              const jsonContent = response?.choices?.[0]?.message?.content || "{}";
               console.log("[Processor] DeepSeek raw response:", jsonContent);
               
               const parsed = JSON.parse(jsonContent);
