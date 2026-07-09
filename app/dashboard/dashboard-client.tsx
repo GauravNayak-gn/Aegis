@@ -96,6 +96,59 @@ export default function DashboardClient({
   const [actionAiTriage, setActionAiTriage] = useState(false);
   const [creatingRule, setCreatingRule] = useState(false);
   const [ruleError, setRuleError] = useState<string | null>(null);
+  
+  // Edit & Delete state
+  const [editingRuleId, setEditingRuleId] = useState<number | null>(null);
+
+  const handleStartEdit = (rule: Rule) => {
+    setEditingRuleId(rule.id);
+    setRuleName(rule.name || "");
+    setMatchField(rule.matchField || "title");
+    setMatchOp(rule.matchOp || "contains");
+    setMatchValue(rule.matchValue || "");
+    setActionLabel(rule.addLabel || "");
+    setActionComment(rule.postComment || "");
+    setActionSlack(rule.slackNotify);
+    setActionAiTriage(rule.aiTriage);
+    setRuleError(null);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingRuleId(null);
+    setRuleName("");
+    setMatchField("title");
+    setMatchOp("contains");
+    setMatchValue("");
+    setActionLabel("");
+    setActionComment("");
+    setActionSlack(false);
+    setActionAiTriage(false);
+    setRuleError(null);
+  };
+
+  const handleDeleteRule = async (ruleId: number) => {
+    if (!confirm("Are you sure you want to delete this automation rule?")) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/rules?id=${ruleId}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "Failed to delete rule.");
+      }
+
+      setRules((prev) => prev.filter((r) => r.id !== ruleId));
+      if (editingRuleId === ruleId) {
+        handleCancelEdit();
+      }
+    } catch (err: any) {
+      alert(err.message || "Failed to delete rule.");
+    }
+  };
 
   const handleSubmitRule = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,8 +162,12 @@ export default function DashboardClient({
     }
 
     try {
-      const res = await fetch("/api/rules", {
-        method: "POST",
+      const isEdit = editingRuleId !== null;
+      const url = isEdit ? `/api/rules?id=${editingRuleId}` : "/api/rules";
+      const method = isEdit ? "PATCH" : "POST";
+
+      const res = await fetch(url, {
+        method,
         headers: {
           "Content-Type": "application/json",
         },
@@ -128,11 +185,19 @@ export default function DashboardClient({
 
       if (!res.ok) {
         const errData = await res.json();
-        throw new Error(errData.error || "Failed to create rule.");
+        throw new Error(errData.error || `Failed to ${isEdit ? "update" : "create"} rule.`);
       }
 
-      const newRule: Rule = await res.json();
-      setRules((prev) => [newRule, ...prev]);
+      const returnedRule: Rule = await res.json();
+
+      if (isEdit) {
+        setRules((prev) =>
+          prev.map((r) => (r.id === returnedRule.id ? returnedRule : r))
+        );
+        setEditingRuleId(null);
+      } else {
+        setRules((prev) => [returnedRule, ...prev]);
+      }
 
       // Reset form
       setRuleName("");
@@ -142,7 +207,7 @@ export default function DashboardClient({
       setActionSlack(false);
       setActionAiTriage(false);
     } catch (err: any) {
-      setRuleError(err.message || "An error occurred while creating the rule.");
+      setRuleError(err.message || "An error occurred.");
     } finally {
       setCreatingRule(false);
     }
@@ -513,7 +578,7 @@ export default function DashboardClient({
             {/* Left Column: Create Rule Form */}
             <div className="lg:col-span-1">
               <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/30 p-6 backdrop-blur-md shadow-xl">
-                <h3 className="text-xl font-bold tracking-tight text-white mb-4">Create New Rule</h3>
+                <h3 className="text-xl font-bold tracking-tight text-white mb-4">{editingRuleId !== null ? "Edit Rule" : "Create New Rule"}</h3>
                 
                 {ruleError && (
                   <div className="mb-4 rounded-xl border border-rose-500/20 bg-rose-500/5 p-3 text-xs text-rose-400">
@@ -634,13 +699,24 @@ export default function DashboardClient({
                     </label>
                   </div>
 
-                  <button
-                    type="submit"
-                    disabled={creatingRule}
-                    className="w-full rounded-xl bg-purple-600 px-5 py-3 text-sm font-semibold text-white transition-all hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-md hover:shadow-purple-500/20 active:scale-[0.97]"
-                  >
-                    {creatingRule ? "Creating..." : "Create Rule"}
-                  </button>
+                  <div className="flex gap-3">
+                    <button
+                      type="submit"
+                      disabled={creatingRule}
+                      className="flex-1 rounded-xl bg-purple-600 px-5 py-3 text-sm font-semibold text-white transition-all hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-md hover:shadow-purple-500/20 active:scale-[0.97]"
+                    >
+                      {editingRuleId !== null ? (creatingRule ? "Saving..." : "Save Changes") : (creatingRule ? "Creating..." : "Create Rule")}
+                    </button>
+                    {editingRuleId !== null && (
+                      <button
+                        type="button"
+                        onClick={handleCancelEdit}
+                        className="rounded-xl border border-zinc-800 px-4 py-3 text-sm font-semibold text-zinc-400 hover:text-white transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
                 </form>
               </div>
             </div>
@@ -704,9 +780,25 @@ export default function DashboardClient({
                             </div>
                           </div>
 
-                          <span className="inline-flex items-center rounded bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-400 border border-emerald-500/20">
-                            Active
-                          </span>
+                          <div className="flex items-center gap-3">
+                            <button
+                              onClick={() => handleStartEdit(rule)}
+                              className="text-xs text-zinc-400 hover:text-white transition-colors"
+                              title="Edit Rule"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDeleteRule(rule.id)}
+                              className="text-xs text-rose-500 hover:text-rose-400 transition-colors font-medium"
+                              title="Delete Rule"
+                            >
+                              Delete
+                            </button>
+                            <span className="inline-flex items-center rounded bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-400 border border-emerald-500/20">
+                              Active
+                            </span>
+                          </div>
                         </div>
                       </div>
                     ))}
