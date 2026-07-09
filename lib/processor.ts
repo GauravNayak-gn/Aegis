@@ -143,16 +143,25 @@ export async function processEvent(eventId: number) {
           if (rule.aiTriage) {
             try {
               console.log(`[Processor] Running DeepSeek AI Triage for rule ${rule.id}`);
+              const apiKey = process.env.OPENCODE_API_KEY || process.env.AI_API_KEY;
+              let rawBaseURL = process.env.OPENCODE_BASE_URL || process.env.AI_API_BASE || "https://opencode.ai/zen/v1/";
+              
+              if (rawBaseURL && !rawBaseURL.endsWith("/")) {
+                rawBaseURL = rawBaseURL + "/";
+              }
+
+              const modelName = process.env.OPENCODE_MODEL_NAME || process.env.AI_MODEL_NAME || "deepseek-v4-flash-free";
+
               const openai = new OpenAI({
-                apiKey: process.env.OPENCODE_API_KEY,
-                baseURL: process.env.OPENCODE_BASE_URL || "https://opencode.ai/zen/v1/",
+                apiKey,
+                baseURL: rawBaseURL,
               });
 
               const issueTitle = payload?.issue?.title || "No Title";
               const issueBody = payload?.issue?.body || "No Description";
 
               const response = await openai.chat.completions.create({
-                model: "deepseek-v4-flash",
+                model: modelName,
                 messages: [
                   {
                     role: "system",
