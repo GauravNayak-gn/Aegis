@@ -21,10 +21,10 @@ Aegis.ai is a premium, developer-first platform designed to automate GitHub issu
 - Generates structured JSON responses mapping to:
   - **Summary**: Concise one-paragraph issue breakdown.
   - **Priority**: Urgency rating (`Low`, `Medium`, `High`) and a one-sentence justification.
-- Combined output is dynamically appended to comments and Slack payloads.
+- Combined output is dynamically embedded directly back into GitHub issue comments and multi-tenant Slack channels.
 
 ### 3. Multi-Tenant Custom Slack Webhooks
-- Custom Slack Webhook URLs can be defined on a per-rule basis.
+- Custom Slack Webhook URLs can be defined on a per-rule basis, allowing multiple unique workspaces to use the engine simultaneously.
 - **Fallback Guardrails**: Automatically uses `process.env.SLACK_WEBHOOK_URL` if a rule-specific URL is omitted. Gracefully skips notification logs if no endpoints are configured.
 
 ### 4. Real-Time Event Log Dashboard
@@ -37,9 +37,9 @@ Aegis.ai is a premium, developer-first platform designed to automate GitHub issu
 - Runs at `/api/cron/retry` (secured with `CRON_SECRET` tokens).
 - Picks up failed webhook events with under 5 attempts, increments count, and retries the process in the background.
 
-### 6. Intelligent Root Route redirection
+### 6. Intelligent Root Route Redirection
 - Root route `/` acts as a server-side traffic controller.
-- Autocomplete redirects authenticated session holders to `/dashboard` and routes unsigned visitors to `/dashboard` (presenting the sign-in screen).
+- Automatically routes active, authenticated session holders directly to `/dashboard`, while safely steering unauthenticated visitors straight to the secure registration/login screen.
 
 ---
 
@@ -47,7 +47,7 @@ Aegis.ai is a premium, developer-first platform designed to automate GitHub issu
 
 - **Framework**: [Next.js](https://nextjs.org/) (App Router, Server Actions, Server Components).
 - **Authentication**: [NextAuth.js](https://next-auth.js.org/) with GitHub OAuth provider. Automatically persists and refreshes repository scopes.
-- **ORM & Database**: [Drizzle ORM](https://orm.drizzle.team/) running over stateless HTTP using `@neondatabase/serverless` (fully compliant with blocked port `5432` environments).
+- **ORM & Database**: [Drizzle ORM](https://orm.drizzle.team/) running over stateless HTTP using `@neondatabase/serverless` (fully compliant with blocked port `5432` serverless environments).
 - **API Client**: OpenAI SDK initialized to resolve OpenCode's gateway paths with robust error-handling.
 
 ---
@@ -66,7 +66,7 @@ Aegis.ai maps tables with snake_case naming conventions:
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Getting Started (Local Development)
 
 ### 1. Environment Configuration (`.env`)
 Create a `.env` file in the `github-bot` folder:
@@ -92,39 +92,69 @@ SLACK_WEBHOOK_URL="https://hooks.slack.com/services/..."
 OPENCODE_API_KEY="your-opencode-api-key"
 OPENCODE_BASE_URL="https://opencode.ai/zen/v1/"
 OPENCODE_MODEL_NAME="deepseek-v4-flash-free"
+
 ```
 
-### 2. Install Dependencies
+### 2. Install Dependencies & Deploy Local Server
+
 ```bash
 npm install
-```
-
-### 3. Push Database Schema
-```bash
-# In restricted environments, migrations can be run manually using neon-http.
-# Drizzle Kit CLI can push directly if port 5432 is open:
 npx drizzle-kit push
+npm run dev
+
 ```
 
-### 4. Run Development Server
-```bash
-npm run dev
-```
-Open [http://localhost:3000](http://localhost:3000) to view the application.
+---
+
+## ☁️ Production Deployment
+
+Aegis.ai is engineered as a cloud-native application, distributed fully across serverless and stateless infrastructures to deliver maximum availability and zero-maintenance scaling.
+
+### 1. Infrastructure Architecture & Hosting
+
+* **Frontend & Serverless API Gateway**: Deployed globally on [Vercel](https://vercel.com). The application's endpoints are handled entirely via Vercel Edge/Serverless functions, eliminating persistent server overhead.
+* **Database Engine**: Hosted on [Neon PostgreSQL](https://neon.tech). Database transport executes completely over standard HTTPS using `@neondatabase/serverless`, bypassing port `5432` corporate firewall constraints and scaling connections dynamically.
+* **Live Production URL**: `https://aegis-sooty-nine.vercel.app`
+
+### 2. Live Webhook Routing Integration (Cutting the Proxy)
+
+In production, local developer tools like the Smee client daemon are decoupled entirely. GitHub webhooks communicate securely and directly with our live production cluster:
+
+* **Production Webhook Endpoint**: `https://aegis-sooty-nine.vercel.app/api/webhooks/github`
+* **OAuth Callback Alignment**: The production application's GitHub Developer OAuth settings are updated to authorize and process redirects explicitly through:
+`https://aegis-sooty-nine.vercel.app/api/auth/callback/github`
+
+### 3. Sub-Hourly Self-Healing Scheduler Workaround
+
+To optimize operational overhead while using a free-tier hosting footprint, Aegis.ai implements an external cron orchestration strategy.
+
+Because Vercel Hobby accounts restrict internal cron triggers to a single execution per day, the self-healing engine is detached from native Vercel crons and bound to an isolated, high-frequency external monitor (**cron-job.org**):
+
+* **Interval**: Triggers precisely every **10 minutes**.
+* **Secure Network Payload**: Executes an automated HTTP `GET` request hitting the serverless endpoint using your production security handshake parameter:
+`https://aegis-sooty-nine.vercel.app/api/cron/retry?token=YOUR_PRODUCTION_CRON_SECRET`
+* **Security Control**: The backend router validates the secret token parameter natively against Vercel's secure environment settings before starting the database processing transaction block.
 
 ---
 
 ## 📡 Webhook Processor & Worker Endpoints
 
 ### 1. GitHub Webhook Receiver (`POST /api/webhooks/github`)
-Incoming webhooks from GitHub are verified against the repository's `webhookSecret` and added to the `event` table, triggering background processing in [lib/processor.ts](file:///media/gaurav/Local%20Disk/github-automation/github-bot/lib/processor.ts).
+
+Incoming webhooks from GitHub are verified against the repository's `webhookSecret` and added to the `event` table, triggering background processing in `lib/processor.ts`.
 
 ### 2. Retry Cron Endpoint (`GET /api/cron/retry`)
-To simulate cron scheduling or trigger a retry:
+
+To simulate cron scheduling or trigger a manual retry:
+
 ```bash
-curl -I "http://localhost:3000/api/cron/retry?token=YOUR_CRON_SECRET"
+curl -I "https://aegis-sooty-nine.vercel.app/api/cron/retry?token=YOUR_CRON_SECRET"
+
 ```
+
 Or include the token as a Bearer authorization header:
+
 ```bash
-curl -H "Authorization: Bearer YOUR_CRON_SECRET" -I "http://localhost:3000/api/cron/retry"
+curl -H "Authorization: Bearer YOUR_CRON_SECRET" -I "https://aegis-sooty-nine.vercel.app/api/cron/retry"
+
 ```
